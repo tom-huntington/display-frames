@@ -35,12 +35,14 @@ int main( int /*argc*/, char ** /*argv*/ )
 
     vk::su::SurfaceData surfaceData( instance, AppName, vk::Extent2D( 640, 640 ) );
 
+    #if 0
     vk::SurfaceCapabilitiesKHR surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR( surfaceData.surface );
     if ( !( surfaceCapabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferDst ) )
     {
       std::cout << "Surface cannot be destination of blit - abort \n";
       exit( -1 );
     }
+    #endif
 
     std::pair<uint32_t, uint32_t> graphicsAndPresentQueueFamilyIndex = vk::su::findGraphicsAndPresentQueueFamilyIndex( physicalDevice, surfaceData.surface );
     vk::Device                    device = vk::su::createDevice( physicalDevice, graphicsAndPresentQueueFamilyIndex.first, vk::su::getDeviceExtensions() );
@@ -56,13 +58,13 @@ int main( int /*argc*/, char ** /*argv*/ )
                                          device,
                                          surfaceData.surface,
                                          surfaceData.extent,
-                                         vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst,
+                                         vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlags{0x00000400},
                                          {},
                                          graphicsAndPresentQueueFamilyIndex.first,
                                          graphicsAndPresentQueueFamilyIndex.second );
 
     /* VULKAN_KEY_START */
-#if !defined( NDEBUG )
+#if 1 // !defined( NDEBUG )
     vk::FormatProperties formatProperties = physicalDevice.getFormatProperties( swapChainData.colorFormat );
     assert( ( formatProperties.linearTilingFeatures & vk::FormatFeatureFlagBits::eBlitSrc ) && "Format cannot be used as transfer source" );
 #endif
@@ -80,6 +82,8 @@ int main( int /*argc*/, char ** /*argv*/ )
       commandBuffer, swapChainData.images[imageIndex], swapChainData.colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal );
 
     // Create an image, map it, and write some values to the image
+    vk::Image           blitSourceImage(nullptr);
+    {
     vk::ImageCreateInfo imageCreateInfo( vk::ImageCreateFlags(),
                                          vk::ImageType::e2D,
                                          swapChainData.colorFormat,
@@ -88,8 +92,8 @@ int main( int /*argc*/, char ** /*argv*/ )
                                          1,
                                          vk::SampleCountFlagBits::e1,
                                          vk::ImageTiling::eLinear,
-                                         vk::ImageUsageFlagBits::eTransferSrc );
-    vk::Image           blitSourceImage = device.createImage( imageCreateInfo );
+                                         vk::ImageUsageFlagBits::eTransferDst );
+    blitSourceImage = device.createImage( imageCreateInfo );
 
     vk::PhysicalDeviceMemoryProperties memoryProperties   = physicalDevice.getMemoryProperties();
     vk::MemoryRequirements             memoryRequirements = device.getImageMemoryRequirements( blitSourceImage );
@@ -99,6 +103,28 @@ int main( int /*argc*/, char ** /*argv*/ )
     device.bindImageMemory( blitSourceImage, deviceMemory, 0 );
 
     vk::su::setImageLayout( commandBuffer, blitSourceImage, swapChainData.colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral );
+  }
+
+    // Create an image, map it, and write some values to the image
+    vk::ImageCreateInfo imageCreateInfo2( vk::ImageCreateFlags(),
+                                         vk::ImageType::e2D,
+                                         swapChainData.colorFormat,
+                                         vk::Extent3D( 16, 16, 1 ),
+                                         1,
+                                         1,
+                                         vk::SampleCountFlagBits::e1,
+                                         vk::ImageTiling::eLinear,
+                                         vk::ImageUsageFlagBits::eTransferSrc );
+    vk::Image           blitSourceImage2 = device.createImage( imageCreateInfo2 );
+
+    vk::PhysicalDeviceMemoryProperties memoryProperties2   = physicalDevice.getMemoryProperties();
+    vk::MemoryRequirements             memoryRequirements2 = device.getImageMemoryRequirements( blitSourceImage2 );
+    uint32_t memoryTypeIndex2 = vk::su::findMemoryType( memoryProperties2, memoryRequirements2.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible );
+
+    vk::DeviceMemory deviceMemory2 = device.allocateMemory( vk::MemoryAllocateInfo( memoryRequirements2.size, memoryTypeIndex2 ) );
+    device.bindImageMemory( blitSourceImage2, deviceMemory2, 0 );
+
+    vk::su::setImageLayout( commandBuffer, blitSourceImage2, swapChainData.colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral );
 
     commandBuffer.end();
 
@@ -111,12 +137,12 @@ int main( int /*argc*/, char ** /*argv*/ )
     while ( device.waitForFences( commandFence, true, vk::su::FenceTimeout ) == vk::Result::eTimeout )
       ;
 
-    unsigned char * pImageMemory = static_cast<unsigned char *>( device.mapMemory( deviceMemory, 0, memoryRequirements.size ) );
+    unsigned char * pImageMemory = static_cast<unsigned char *>( device.mapMemory( deviceMemory2, 0, memoryRequirements2.size ) );
 
     // Checkerboard of 8x8 pixel squares
-    for ( uint32_t row = 0; row < surfaceData.extent.height; row++ )
+    for ( uint32_t row = 0; row < /*surfaceData.extent.height*/16; row++ )
     {
-      for ( uint32_t col = 0; col < surfaceData.extent.width; col++ )
+      for ( uint32_t col = 0; col < /*surfaceData.extent.width*/16; col++ )
       {
         unsigned char rgb = ( ( ( row & 0x8 ) == 0 ) ^ ( ( col & 0x8 ) == 0 ) ) * 255;
         pImageMemory[0]   = rgb;
@@ -128,8 +154,8 @@ int main( int /*argc*/, char ** /*argv*/ )
     }
 
     // Flush the mapped memory and then unmap it. Assume it isn't coherent since we didn't really confirm
-    device.flushMappedMemoryRanges( vk::MappedMemoryRange( deviceMemory, 0, memoryRequirements.size ) );
-    device.unmapMemory( deviceMemory );
+    device.flushMappedMemoryRanges( vk::MappedMemoryRange( deviceMemory2, 0, memoryRequirements2.size ) );
+    device.unmapMemory( deviceMemory2 );
 
     // reset the command buffer by resetting the complete command pool
     device.resetCommandPool( commandPool );
@@ -137,18 +163,28 @@ int main( int /*argc*/, char ** /*argv*/ )
     commandBuffer.begin( vk::CommandBufferBeginInfo() );
 
     // Intend to blit from this image, set the layout accordingly
-    vk::su::setImageLayout( commandBuffer, blitSourceImage, swapChainData.colorFormat, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal );
-
+    vk::su::setImageLayout( commandBuffer, blitSourceImage2, swapChainData.colorFormat, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal );
+    vk::su::setImageLayout( commandBuffer, blitSourceImage, swapChainData.colorFormat, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferDstOptimal );
+    
     vk::Image blitDestinationImage = swapChainData.images[imageIndex];
 
     // Do a 32x32 blit to all of the dst image - should get big squares
     vk::ImageSubresourceLayers imageSubresourceLayers( vk::ImageAspectFlagBits::eColor, 0, 0, 1 );
     vk::ImageBlit              imageBlit( imageSubresourceLayers,
-                                          { { vk::Offset3D( 0, 0, 0 ), vk::Offset3D( 32, 32, 1 ) } },
+                                          { { vk::Offset3D( 0, 0, 0 ), vk::Offset3D( 16, 16, 1 ) } },
                              imageSubresourceLayers,
                                           { { vk::Offset3D( 0, 0, 0 ), vk::Offset3D( surfaceData.extent.width, surfaceData.extent.height, 1 ) } } );
     commandBuffer.blitImage(
-      blitSourceImage, vk::ImageLayout::eTransferSrcOptimal, blitDestinationImage, vk::ImageLayout::eTransferDstOptimal, imageBlit, vk::Filter::eLinear );
+      blitSourceImage2, vk::ImageLayout::eTransferSrcOptimal, blitSourceImage, vk::ImageLayout::eTransferDstOptimal, imageBlit, vk::Filter::eLinear );
+    #if 0
+    vk::ImageCopy imageCopy2(
+      imageSubresourceLayers,  
+      vk::Offset3D( 0, 0, 0 ),
+       imageSubresourceLayers, 
+       vk::Offset3D( surfaceData.extent.width, surfaceData.extent.height, 1 ));
+    commandBuffer.copyImage(
+      blitSourceImage, vk::ImageLayout::eTransferSrcOptimal, blitDestinationImage, vk::ImageLayout::eTransferDstOptimal, 1, &imageCopy2);
+    #endif
 
     // Use a barrier to make sure the blit is finished before the copy starts
     // Note: for a layout of vk::ImageLayout::eTransferDstOptimal, the access mask is supposed to be vk::AccessFlagBits::eTransferWrite
@@ -164,7 +200,8 @@ int main( int /*argc*/, char ** /*argv*/ )
       vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlags(), nullptr, nullptr, memoryBarrier );
 
     // Do a image copy to part of the dst image - checks should stay small
-    vk::ImageCopy imageCopy( imageSubresourceLayers, vk::Offset3D(), imageSubresourceLayers, vk::Offset3D( 256, 256, 0 ), vk::Extent3D( 128, 128, 1 ) );
+    //vk::ImageCopy imageCopy( imageSubresourceLayers, vk::Offset3D(), imageSubresourceLayers, vk::Offset3D( 256, 256, 0 ), vk::Extent3D( 128, 128, 1 ) );
+    vk::ImageCopy imageCopy( imageSubresourceLayers, vk::Offset3D(), imageSubresourceLayers, vk::Offset3D( 0, 0, 0 ), vk::Extent3D( 640, 640, 1 ) );
     commandBuffer.copyImage( blitSourceImage, vk::ImageLayout::eTransferSrcOptimal, blitDestinationImage, vk::ImageLayout::eTransferDstOptimal, imageCopy );
 
     // Note: for a layout of vk::ImageLayout::ePresentSrcKHR, the access mask is supposed to be empty
@@ -196,14 +233,14 @@ int main( int /*argc*/, char ** /*argv*/ )
       case vk::Result::eSuboptimalKHR: std::cout << "vk::Queue::presentKHR returned vk::Result::eSuboptimalKHR !\n"; break;
       default: assert( false );  // an unexpected result is returned !
     }
-    std::this_thread::sleep_for( std::chrono::milliseconds( 1000 ) );
+    std::this_thread::sleep_for( std::chrono::milliseconds( 10000 ) );
 
     /* VULKAN_KEY_END */
 
     device.destroyFence( drawFence );
     device.destroyFence( commandFence );
     device.destroyImage( blitSourceImage );  // destroy the image before the bound device memory to prevent some validation layer warning
-    device.freeMemory( deviceMemory );
+    device.freeMemory( deviceMemory2 );
     device.destroySemaphore( imageAcquiredSemaphore );
     swapChainData.clear( device );
     device.freeCommandBuffers( commandPool, commandBuffer );

@@ -413,7 +413,8 @@ if( VULKAN_HPP_RUN_GENERATOR )
 	add_custom_target( build_vulkan_video ALL DEPENDS "${vulkan_video_hpp}" "${video_spec}" )
 endif()
 
-if( VULKAN_HPP_SAMPLES_BUILD )
+# if( VULKAN_HPP_SAMPLES_BUILD )
+if (1)
 	# external libraries
 	add_subdirectory( glm )
 	set( GLFW_BUILD_EXAMPLES OFF )
@@ -422,7 +423,7 @@ if( VULKAN_HPP_SAMPLES_BUILD )
 	add_subdirectory( glslang )
 	# samples
 	add_subdirectory( samples )
-	add_subdirectory( RAII_Samples )
+	# add_subdirectory( RAII_Samples )
 endif()
 
 if( VULKAN_HPP_TESTS_BUILD )
