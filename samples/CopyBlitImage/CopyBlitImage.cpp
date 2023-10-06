@@ -30,20 +30,43 @@ int main( int argc, char ** argv )
   auto it = std::find(args.begin(), args.end(), std::string_view{"--size"});
   int width_input_ = 1280;//720][1280
   int height_input_ = 720;
+  int width_swapchain_ = 1280;
+  int height_swapchain_ = 720;
   if (it == args.end())
   {
     std::cout << "No --size {width}x{height} command line argument provided" << std::endl;
-    //return 1;
+    return 1;
   }
   else
   {
     std::advance(it, 1);
-    sscanf( it->data(), "%dx%d", &width_input_, &height_input_);
+    auto num = sscanf( it->data(), "%dx%d", &width_input_, &height_input_);
+    if (num != 2) {
+
+      std::cout << "Didn't scanf the width and height correctly: format is: {int}x{int}" << std::endl;
+      return 1;
+    }
+    if (height_input_ < 0 || height_input_ > 1080)
+    {
+      std::cout << "unsupported height: " << height_input_ << std::endl;
+      return 1;
+    }
+    if (width_input_ < 0 || width_input_ > 1920)
+    {
+      std::cout << "unsupported width: " << width_input_ << std::endl;
+      return 1;
+    }
+    auto w_ratio =  float(1920) / float(width_input_);
+    auto h_ratio = float(1080) / float(height_input_);
+    auto smallest_ratio = unsigned(std::min(w_ratio, h_ratio));
+    width_input_ *= int(smallest_ratio);
+    height_input_ *= int(smallest_ratio);
+      
   }
   const unsigned width_input = width_input_;
   const unsigned height_input = height_input_;
-  const int width_swapchain = 1280;
-  const int height_swapchain = 720;
+  const unsigned width_swapchain = width_swapchain_;
+  const unsigned height_swapchain = height_swapchain_;
 
   auto input_data = std::vector<uint8_t>(3*width_input*height_input);
 
