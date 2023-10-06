@@ -580,6 +580,8 @@ namespace vk
         case vk::ImageLayout::eTransferDstOptimal: sourceAccessMask = vk::AccessFlagBits::eTransferWrite; break;
         case vk::ImageLayout::ePreinitialized: sourceAccessMask = vk::AccessFlagBits::eHostWrite; break;
         case vk::ImageLayout::eGeneral:  // sourceAccessMask is empty
+        case vk::ImageLayout::ePresentSrcKHR:
+        case vk::ImageLayout::eTransferSrcOptimal:
         case vk::ImageLayout::eUndefined: break;
         default: assert( false ); break;
       }
@@ -589,6 +591,8 @@ namespace vk
       {
         case vk::ImageLayout::eGeneral:
         case vk::ImageLayout::ePreinitialized: sourceStage = vk::PipelineStageFlagBits::eHost; break;
+        case vk::ImageLayout::eTransferSrcOptimal:
+        case vk::ImageLayout::ePresentSrcKHR:
         case vk::ImageLayout::eTransferDstOptimal: sourceStage = vk::PipelineStageFlagBits::eTransfer; break;
         case vk::ImageLayout::eUndefined: sourceStage = vk::PipelineStageFlagBits::eTopOfPipe; break;
         default: assert( false ); break;

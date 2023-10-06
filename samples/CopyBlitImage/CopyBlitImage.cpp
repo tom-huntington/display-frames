@@ -19,6 +19,7 @@
 
 #include <thread>
 #include <string_view>
+#include <exception>
 
 static char const * AppName    = "CopyBlitImage";
 static char const * EngineName = "Vulkan.hpp";
@@ -27,29 +28,24 @@ int main( int argc, char ** argv )
 {
   const std::vector<std::string_view> args(argv + 1, argv + argc);
   auto it = std::find(args.begin(), args.end(), std::string_view{"--size"});
+  int width_input_ = 1280;//720][1280
+  int height_input_ = 720;
   if (it == args.end())
   {
     std::cout << "No --size {width}x{height} command line argument provided" << std::endl;
-    return 1;
+    //return 1;
   }
-  std::advance(it, 1);
-  int width_input_ = 1280;//720][1280
-  int height_input_ = 720;
-  sscanf( it->data(), "%dx%d", &width_input_, &height_input_);
+  else
+  {
+    std::advance(it, 1);
+    sscanf( it->data(), "%dx%d", &width_input_, &height_input_);
+  }
   const unsigned width_input = width_input_;
   const unsigned height_input = height_input_;
   const int width_swapchain = 1280;
   const int height_swapchain = 720;
 
   auto input_data = std::vector<uint8_t>(3*width_input*height_input);
-  size_t read_size;
-  for (int i = 0; i < 1; i++)
-  {
-    read_size = fread(input_data.data(), 1, input_data.size(), stdin);
-    assert(input_data.size() == read_size);
-  }
-
-  std::printf("read\n");
 
   try
   {
@@ -96,7 +92,8 @@ int main( int argc, char ** argv )
     vk::FormatProperties formatProperties = physicalDevice.getFormatProperties( /*vk::Format::eB8G8R8A8Unorm*/swapChainData.colorFormat );
     //auto b = bool(formatProperties.linearTilingFeatures & vk::FormatFeatureFlagBits::eBlitDst);
     auto b2 = bool( formatProperties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eBlitSrc );
-    assert( b2 && "Format cannot be used as transfer source" );
+    if (not b2) std::runtime_error("Device backbuffer format not supported");
+    //assert( b2 && "Format cannot be used as transfer source" );
     //assert(b);
 #endif
 
@@ -106,12 +103,9 @@ int main( int argc, char ** argv )
     vk::ResultValue<uint32_t> nextImage = device.acquireNextImageKHR( swapChainData.swapChain, vk::su::FenceTimeout, imageAcquiredSemaphore, nullptr );
     assert( nextImage.result == vk::Result::eSuccess );
     assert( nextImage.value < swapChainData.images.size() );
-    uint32_t imageIndex = nextImage.value;
 
     commandBuffer.begin( vk::CommandBufferBeginInfo() );
-    vk::su::setImageLayout(
-      commandBuffer, swapChainData.images[imageIndex], swapChainData.colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal );
-
+    
     // Create an image, map it, and write some values to the image
     vk::ImageCreateInfo imageCreateInfo( vk::ImageCreateFlags(),
                                          vk::ImageType::e2D,
@@ -131,7 +125,6 @@ int main( int argc, char ** argv )
     vk::DeviceMemory deviceMemory = device.allocateMemory( vk::MemoryAllocateInfo( memoryRequirements.size, memoryTypeIndex ) );
     device.bindImageMemory( blitSourceImage, deviceMemory, 0 );
 
-    vk::su::setImageLayout( commandBuffer, blitSourceImage, swapChainData.colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral );
 
 
     vk::ImageCreateInfo imageCreateInfo2( vk::ImageCreateFlags(),
@@ -152,7 +145,9 @@ int main( int argc, char ** argv )
     vk::DeviceMemory deviceMemory2 = device.allocateMemory( vk::MemoryAllocateInfo( memoryRequirements2.size, memoryTypeIndex2 ) );
     device.bindImageMemory( blitSourceImage2, deviceMemory2, 0 );
 
-    vk::su::setImageLayout( commandBuffer, blitSourceImage2, swapChainData.colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral );
+    vk::su::setImageLayout( commandBuffer, blitSourceImage, swapChainData.colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal );
+    vk::su::setImageLayout( commandBuffer, blitSourceImage2, swapChainData.colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferSrcOptimal );
+    //vk::su::setImageLayout( commandBuffer, blitSourceImage, swapChainData.colorFormat, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal );
 
 
     commandBuffer.end();
@@ -165,6 +160,29 @@ int main( int argc, char ** argv )
     /* Make sure command buffer is finished before mapping */
     while ( device.waitForFences( commandFence, true, vk::su::FenceTimeout ) == vk::Result::eTimeout )
       ;
+  vk::Fence drawFence = device.createFence( {} );
+  
+  for(;;)
+  {
+
+    
+
+
+  #if 1
+    size_t read_size;
+    read_size = fread(input_data.data(), 1, input_data.size(), stdin);
+    if (read_size == 0)
+    {
+      std::cout << "End of stdin" << std::endl;
+      break;
+    }
+    if (input_data.size() != read_size)
+    {
+      std::cout << "fread didn't read whole frame" << std::endl;
+      throw std::runtime_error("Need to add support for fread partial frames");
+    }
+    #endif
+
 
     unsigned char * pImageMemory = static_cast<unsigned char *>( device.mapMemory( deviceMemory, 0, memoryRequirements.size ) );
     auto layout = device.getImageSubresourceLayout( blitSourceImage, vk::ImageSubresource( vk::ImageAspectFlagBits::eColor ) );
@@ -174,8 +192,8 @@ int main( int argc, char ** argv )
       std::cout << "Device has unsupported color format. Only B8G8R8A8Unorm and R8G8B8A8Unorm supported" << std::endl;
       return 1;
     }
-    auto color_index0 = vk::Format::eB8G8R8A8Unorm == swapChainData.colorFormat ? 0 : 2;
-    auto color_index2 = vk::Format::eB8G8R8A8Unorm == swapChainData.colorFormat ? 2 : 0;
+    auto color_index0 = vk::Format::eB8G8R8A8Unorm == swapChainData.colorFormat ? 2 : 0;
+    auto color_index2 = vk::Format::eB8G8R8A8Unorm == swapChainData.colorFormat ? 0 : 2;
     // Checkerboard of 8x8 pixel squares
     for ( uint32_t row = 0; row < height_input; row++ )
     {
@@ -200,14 +218,20 @@ int main( int argc, char ** argv )
     device.flushMappedMemoryRanges( vk::MappedMemoryRange( deviceMemory, 0, memoryRequirements.size ) );
     device.unmapMemory( deviceMemory );
 
+
+    nextImage = device.acquireNextImageKHR( swapChainData.swapChain, vk::su::FenceTimeout, imageAcquiredSemaphore, nullptr );
+    assert( nextImage.result == vk::Result::eSuccess );
+    assert( nextImage.value < swapChainData.images.size() );
+    uint32_t imageIndex = nextImage.value;
+
     // reset the command buffer by resetting the complete command pool
+    
     device.resetCommandPool( commandPool );
 
     commandBuffer.begin( vk::CommandBufferBeginInfo() );
 
     // Intend to blit from this image, set the layout accordingly
-    vk::su::setImageLayout( commandBuffer, blitSourceImage, swapChainData.colorFormat, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal );
-    vk::su::setImageLayout( commandBuffer, blitSourceImage2, swapChainData.colorFormat, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferDstOptimal );
+    vk::su::setImageLayout( commandBuffer, blitSourceImage2, swapChainData.colorFormat, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eTransferDstOptimal );
 
     vk::ImageSubresourceLayers imageSubresourceLayers( vk::ImageAspectFlagBits::eColor, 0, 0, 1 );
     vk::ImageCopy imageCopy( imageSubresourceLayers, vk::Offset3D(), imageSubresourceLayers, vk::Offset3D( 0, 0, 0 ), vk::Extent3D( width_input, height_input, 1 ) );
@@ -222,7 +246,10 @@ int main( int argc, char ** argv )
                              imageSubresourceLayers,
                                           { { vk::Offset3D( 0, 0, 0 ), vk::Offset3D( surfaceData.extent.width, surfaceData.extent.height, 1 ) } } );
     
-    vk::su::setImageLayout( commandBuffer, blitSourceImage2, swapChainData.colorFormat, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal );
+    vk::su::setImageLayout( commandBuffer, blitSourceImage2, swapChainData.colorFormat, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal );
+    vk::su::setImageLayout(
+      commandBuffer, swapChainData.images[imageIndex], swapChainData.colorFormat, vk::ImageLayout::ePresentSrcKHR, vk::ImageLayout::eTransferDstOptimal );
+
     commandBuffer.blitImage(
       blitSourceImage2, vk::ImageLayout::eTransferSrcOptimal, blitDestinationImage, vk::ImageLayout::eTransferDstOptimal, imageBlit, vk::Filter::eLinear );
 
@@ -256,30 +283,35 @@ int main( int argc, char ** argv )
       vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTopOfPipe, vk::DependencyFlags(), nullptr, nullptr, prePresentBarrier );
     commandBuffer.end();
 
-    vk::Fence drawFence = device.createFence( {} );
+    
     graphicsQueue.submit( vk::SubmitInfo( {}, {}, commandBuffer ), drawFence );
     graphicsQueue.waitIdle();
 
     /* Make sure command buffer is finished before presenting */
     while ( device.waitForFences( drawFence, true, vk::su::FenceTimeout ) == vk::Result::eTimeout )
       ;
+    auto r = device.resetFences(1, &drawFence);
+    if ( r != vk::Result::eSuccess) throw std::runtime_error("Vulkan Failed to reset fences");
 
     /* Now present the image in the window */
-    vk::Result result = presentQueue.presentKHR( vk::PresentInfoKHR( {}, swapChainData.swapChain, imageIndex, {} ) );
+    vk::Result result = presentQueue.presentKHR( vk::PresentInfoKHR( 1, &imageAcquiredSemaphore, 1, &swapChainData.swapChain, &imageIndex ) );
     switch ( result )
     {
       case vk::Result::eSuccess: break;
       case vk::Result::eSuboptimalKHR: std::cout << "vk::Queue::presentKHR returned vk::Result::eSuboptimalKHR !\n"; break;
       default: assert( false );  // an unexpected result is returned !
     }
-    std::this_thread::sleep_for( std::chrono::milliseconds( 10000 ) );
+  }
+    //std::this_thread::sleep_for( std::chrono::milliseconds( 10000 ) );
 
     /* VULKAN_KEY_END */
 
     device.destroyFence( drawFence );
     device.destroyFence( commandFence );
     device.destroyImage( blitSourceImage );  // destroy the image before the bound device memory to prevent some validation layer warning
+    device.destroyImage( blitSourceImage2 );  // destroy the image before the bound device memory to prevent some validation layer warning
     device.freeMemory( deviceMemory );
+    device.freeMemory( deviceMemory2 );
     device.destroySemaphore( imageAcquiredSemaphore );
     swapChainData.clear( device );
     device.freeCommandBuffers( commandPool, commandBuffer );
