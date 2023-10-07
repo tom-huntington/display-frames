@@ -47,17 +47,11 @@ int main( int argc, char ** argv )
       std::cout << "Didn't scanf the width and height correctly: format is: {int}x{int}" << std::endl;
       return 1;
     }
-    auto w_ratio =  float(1920) / float(width_input_);
-    auto h_ratio = float(1080) / float(height_input_);
+    auto w_ratio =  float(1920 - 50) / float(width_input_);
+    auto h_ratio = float(1080 - 50) / float(height_input_);
     auto smallest_ratio = std::min(w_ratio, h_ratio);
-    if (smallest_ratio > 1)
-    {
-      width_swapchain_ *= int(smallest_ratio);
-      height_swapchain_ *= int(smallest_ratio);
-    } else {
-      width_swapchain_ = int(width_input_ * smallest_ratio);
-      height_swapchain_ = int(height_input_ * smallest_ratio);
-    }
+    width_swapchain_ = int(width_input_ * smallest_ratio);
+    height_swapchain_ = int(height_input_ * smallest_ratio);
   }
   std::printf("After adjustment width: %d, height: %d,  ratio: %f\n", width_input_, height_input_, float(width_input_)/float(height_input_));
 
