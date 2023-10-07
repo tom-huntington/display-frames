@@ -9,3 +9,9 @@ cmake --build build
 ```
 
 Binary will be located at `./build/samples/CopyBlitImage/CopyBlitImage`
+
+
+you need to pass `--size {width}x{height}`
+```
+generate_frames() | displayframes --size 1280x720
+```
