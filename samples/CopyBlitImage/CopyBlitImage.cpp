@@ -41,28 +41,26 @@ int main( int argc, char ** argv )
   {
     std::advance(it, 1);
     auto num = sscanf( it->data(), "%dx%d", &width_input_, &height_input_);
+    std::printf("width: %d, height: %d, ratio: %f\n", width_input_, height_input_, float(width_input_)/float(height_input_));
     if (num != 2) {
 
       std::cout << "Didn't scanf the width and height correctly: format is: {int}x{int}" << std::endl;
       return 1;
     }
-    if (height_input_ < 0 || height_input_ > 1080)
-    {
-      std::cout << "unsupported height: " << height_input_ << std::endl;
-      return 1;
-    }
-    if (width_input_ < 0 || width_input_ > 1920)
-    {
-      std::cout << "unsupported width: " << width_input_ << std::endl;
-      return 1;
-    }
     auto w_ratio =  float(1920) / float(width_input_);
     auto h_ratio = float(1080) / float(height_input_);
-    auto smallest_ratio = unsigned(std::min(w_ratio, h_ratio));
-    width_input_ *= int(smallest_ratio);
-    height_input_ *= int(smallest_ratio);
-      
+    auto smallest_ratio = std::min(w_ratio, h_ratio);
+    if (smallest_ratio > 1)
+    {
+      width_swapchain_ *= int(smallest_ratio);
+      height_swapchain_ *= int(smallest_ratio);
+    } else {
+      width_swapchain_ = int(width_input_ * smallest_ratio);
+      height_swapchain_ = int(height_input_ * smallest_ratio);
+    }
   }
+  std::printf("After adjustment width: %d, height: %d,  ratio: %f\n", width_input_, height_input_, float(width_input_)/float(height_input_));
+
   const unsigned width_input = width_input_;
   const unsigned height_input = height_input_;
   const unsigned width_swapchain = width_swapchain_;
